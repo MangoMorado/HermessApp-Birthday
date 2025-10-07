@@ -1,0 +1,31 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  bot:
+    image: python:3.9-slim
+    container_name: hermess-birthday-bot
+    working_dir: /app
+    command: python3 hermess_birthday_bot.py
+    
+    # Esta sección es la magia de la persistencia:
+    volumes:
+      # Mapea la carpeta actual del servidor a la carpeta /app dentro del contenedor
+      - .:/app
+      
+    # Carga las variables de entorno desde el archivo config.env
+    env_file:
+      - config.env
+      
+    # Instala las dependencias al iniciar (si no están ya)
+    # y luego ejecuta el script.
+    entrypoint: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+               python3 hermess_birthday_bot.py"
+               
+    # Mantiene el contenedor corriendo si necesitas depurar,
+    # puedes comentarlo si solo quieres que se ejecute y termine.
+    # tty: true 
+    
+    # Se reinicia solo si falla (opcional)
+    # restart: on-failure
