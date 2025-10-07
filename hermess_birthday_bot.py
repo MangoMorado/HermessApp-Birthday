@@ -15,7 +15,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 
 class HermessBirthdayBot:
@@ -33,29 +35,177 @@ class HermessBirthdayBot:
             raise ValueError("Debes configurar HERMESS_EMAIL y HERMESS_PASSWORD en config.env")
         
         if not self.n8n_webhook_url:
-            raise ValueError("Debes configurar N8N_WEBHOOK_URL o n8n_workflow en config.env")
+            raise ValueError("Debes configurar N8N_WEBHOOK_URL en config.env")
         
         self.driver = None
         self.wait = None
         
     def setup_driver(self):
-        """Configura el driver de Chrome con opciones optimizadas"""
-        chrome_options = Options()
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        chrome_options.add_argument("--user-data-dir=/tmp/selenium")
-        chrome_options.add_argument("--headless")
+        try:
+            print("[INFO] Configurando ChromeDriver...")
+            
+            chrome_options = Options()
+            
+            # Opciones básicas para compatibilidad con Alpine Linux
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--disable-software-rasterizer")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-features=TranslateUI")
+            chrome_options.add_argument("--disable-ipc-flooding-protection")
+            
+            # Configuración de ventana
+            chrome_options.add_argument("--window-size=1280,720")
+            chrome_options.add_argument("--start-maximized")
+            
+            # Deshabilitar características innecesarias
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--disable-images")
+            chrome_options.add_argument("--disable-javascript")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--allow-running-insecure-content")
+            
+            # User agent genérico
+            chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            
+            # Directorio temporal - detectar sistema operativo
+            import platform
+            if platform.system() == "Windows":
+                user_data_dir = "C:\\temp\\selenium_chrome"
+            else:
+                user_data_dir = "/tmp/selenium_chrome"
+            
+            chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+            
+            # Modo headless para producción
+            chrome_options.add_argument("--headless")
+            
+            # Configurar logging silencioso
+            chrome_options.add_argument("--log-level=3")
+            chrome_options.add_argument("--silent")
+            chrome_options.add_argument("--disable-logging")
+            chrome_options.add_argument("--disable-default-apps")
+            
+            # Opciones adicionales para estabilidad
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # Opciones específicas para Alpine Linux
+            if platform.system() == "Linux":
+                chrome_options.add_argument("--single-process")
+                chrome_options.add_argument("--no-zygote")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+            
+            # Detectar si estamos en un contenedor Alpine Linux
+            import os
+            chrome_binary_path = None
+            chromedriver_path = None
+            
+            # Verificar si estamos en Alpine Linux (contenedor)
+            if os.path.exists("/usr/bin/chromium-browser"):
+                chrome_binary_path = "/usr/bin/chromium-browser"
+                chromedriver_path = "/usr/bin/chromedriver"
+                chrome_options.binary_location = chrome_binary_path
+                print("[INFO] Detectado Chrome en Alpine Linux")
+            
+            # Intentar usar webdriver-manager primero
+            try:
+                if chromedriver_path:
+                    service = Service(chromedriver_path)
+                    print("[START] Iniciando navegador con ChromeDriver de Alpine...")
+                else:
+                    service = Service(ChromeDriverManager().install())
+                    print("[START] Iniciando navegador Chrome con webdriver-manager...")
+                
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception as e1:
+                print(f"[WARNING] Error con ChromeDriver configurado: {str(e1)}")
+                print("[INFO] Intentando con ChromeDriver del PATH...")
+                try:
+                    self.driver = webdriver.Chrome(options=chrome_options)
+                except Exception as e2:
+                    print(f"[ERROR] Error con ChromeDriver del PATH: {str(e2)}")
+                    raise Exception(f"No se pudo inicializar ChromeDriver. Errores: {str(e1)} | {str(e2)}")
+            
+            # Configurar timeouts
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(10)
+            
+            self.wait = WebDriverWait(self.driver, 15)
+            print("[OK] Navegador configurado exitosamente")
+            
+        except Exception as e:
+            print(f"[ERROR] Error configurando el navegador: {str(e)}")
+            raise
         
-        self.driver = webdriver.Chrome(options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 10)
-        
+    def is_logged_in(self):
+        """Verifica si ya estamos logueados en HermessApp"""
+        try:
+            print("[INFO] Verificando si ya hay una sesión iniciada...")
+            
+            # Navegar a la página principal o de dashboard
+            self.driver.get(self.birthdays_url)
+            time.sleep(2)
+            
+            # Verificar indicadores de que estamos logueados
+            logged_in_indicators = [
+                # Buscar elementos que solo aparecen cuando estamos logueados
+                "//a[contains(@href, 'logout') or contains(text(), 'Cerrar') or contains(text(), 'Logout')]",
+                "//button[contains(text(), 'Cerrar') or contains(text(), 'Logout')]",
+                "//*[contains(@class, 'user') or contains(@class, 'profile') or contains(@class, 'dashboard')]",
+                # Buscar formularios de datos (que solo aparecen logueados)
+                "//table",
+                "//*[contains(text(), 'cumpleaños') or contains(text(), 'pacientes')]"
+            ]
+            
+            for indicator in logged_in_indicators:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, indicator)
+                    if elements:
+                        print(f"[OK] Sesión ya iniciada - encontrado indicador: {indicator}")
+                        return True
+                except:
+                    continue
+            
+            # Verificar si estamos en la página de login
+            login_indicators = [
+                "//form[contains(@action, 'login')]",
+                "//input[@name='email']",
+                "//input[@name='password']",
+                "//button[contains(text(), 'Iniciar') or contains(text(), 'Login')]"
+            ]
+            
+            for indicator in login_indicators:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, indicator)
+                    if elements:
+                        print(f"[INFO] No hay sesión iniciada - encontrado formulario de login")
+                        return False
+                except:
+                    continue
+            
+            # Si no encontramos indicadores claros, asumir que no estamos logueados
+            print("[INFO] No se pudo determinar el estado de la sesión, procediendo con login")
+            return False
+            
+        except Exception as e:
+            print(f"[WARNING] Error verificando sesión: {str(e)}")
+            return False
+
     def login(self):
         """Inicia sesión en HermessApp"""
         try:
-            print("🔄 Iniciando sesión en HermessApp...")
+            # Primero verificar si ya estamos logueados
+            if self.is_logged_in():
+                print("[OK] Sesión ya iniciada, continuando...")
+                return True
+            
+            print("[INFO] Iniciando sesión en HermessApp...")
             self.driver.get(self.login_url)
             
             # Esperar a que cargue la página de login
@@ -81,17 +231,22 @@ class HermessBirthdayBot:
             # Esperar a que se complete el login
             time.sleep(3)
             
-            print("✅ Sesión iniciada exitosamente")
-            return True
+            # Verificar que el login fue exitoso
+            if self.is_logged_in():
+                print("[OK] Sesión iniciada exitosamente")
+                return True
+            else:
+                print("[ERROR] Login falló - no se pudo verificar la sesión")
+                return False
             
         except Exception as e:
-            print(f"❌ Error durante el login: {str(e)}")
+            print(f"[ERROR] Error durante el login: {str(e)}")
             return False
     
     def navigate_to_birthdays(self):
         """Navega a la página de cumpleaños"""
         try:
-            print("🔄 Navegando a la página de cumpleaños...")
+            print("[INFO] Navegando a la página de cumpleaños...")
             self.driver.get(self.birthdays_url)
             time.sleep(3)
             
@@ -106,55 +261,55 @@ class HermessBirthdayBot:
             except:
                 pass
             
-            print("✅ Página de cumpleaños cargada")
+            print("[OK] Página de cumpleaños cargada")
             return True
             
         except Exception as e:
-            print(f"❌ Error navegando a la página de cumpleaños: {str(e)}")
+            print(f"[ERROR] Error navegando a la página de cumpleaños: {str(e)}")
             return False
     
     def _debug_page_content(self):
         """Hace debug del contenido de la página para entender su estructura"""
         try:
-            print("🔍 Analizando contenido de la página...")
+            print("[DEBUG] Analizando contenido de la página...")
             
             # Obtener el título de la página
             title = self.driver.title
-            print(f"📄 Título de la página: {title}")
+            print(f"[PAGE] Título de la página: {title}")
             
             # Buscar texto que contenga "cumpleaños"
             birthday_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'cumpleaños') or contains(text(), 'cumpleañeros') or contains(text(), 'birthday')]")
             if birthday_elements:
-                print(f"🎂 Encontrados {len(birthday_elements)} elementos con texto de cumpleaños:")
+                print(f"[BIRTHDAY] Encontrados {len(birthday_elements)} elementos con texto de cumpleaños:")
                 for elem in birthday_elements[:3]:  # Solo mostrar los primeros 3
                     print(f"  - {elem.text[:100]}...")
             
             # Buscar formularios
             forms = self.driver.find_elements(By.CSS_SELECTOR, "form")
-            print(f"📝 Encontrados {len(forms)} formularios")
+            print(f"[FORM] Encontrados {len(forms)} formularios")
             
             # Buscar tablas
             tables = self.driver.find_elements(By.CSS_SELECTOR, "table")
-            print(f"📊 Encontradas {len(tables)} tablas HTML")
+            print(f"[DATA] Encontradas {len(tables)} tablas HTML")
             
             # Buscar divs que puedan contener datos
             data_divs = self.driver.find_elements(By.CSS_SELECTOR, "div[class*='data'], div[class*='list'], div[class*='table']")
-            print(f"📋 Encontrados {len(data_divs)} divs potenciales de datos")
+            print(f"[LIST] Encontrados {len(data_divs)} divs potenciales de datos")
             
             # Mostrar las primeras líneas del HTML para debug
             page_source = self.driver.page_source
             if "cumpleaños" in page_source.lower() or "cumpleañeros" in page_source.lower():
-                print("✅ La página contiene texto relacionado con cumpleaños")
+                print("[OK] La página contiene texto relacionado con cumpleaños")
             else:
-                print("⚠️ No se encontró texto relacionado con cumpleaños en la página")
+                print("[WARNING] No se encontró texto relacionado con cumpleaños en la página")
                 
         except Exception as e:
-            print(f"⚠️ Error en debug: {str(e)}")
+            print(f"[WARNING] Error en debug: {str(e)}")
     
     def extract_birthday_data(self):
         """Extrae los datos de cumpleaños de la tabla"""
         try:
-            print("🔄 Extrayendo datos de cumpleaños...")
+            print("[INFO] Extrayendo datos de cumpleaños...")
             
             # Esperar un poco más para que la página cargue completamente
             time.sleep(2)
@@ -188,7 +343,7 @@ class HermessBirthdayBot:
                 # Si no encontramos tabla, buscar por texto que contenga "cumpleaños"
                 try:
                     birthday_text = self.driver.find_element(By.XPATH, "//*[contains(text(), 'cumpleaños') or contains(text(), 'cumpleañeros')]")
-                    print(f"📍 Encontrado texto relacionado: {birthday_text.text}")
+                    print(f"[FOUND] Encontrado texto relacionado: {birthday_text.text}")
                     # Buscar el contenedor padre que pueda contener la tabla
                     table = birthday_text.find_element(By.XPATH, "./ancestor::div[contains(@class, 'container') or contains(@class, 'table') or contains(@class, 'list')]")
                 except:
@@ -197,7 +352,7 @@ class HermessBirthdayBot:
             if not table:
                 raise Exception("No se pudo encontrar la tabla de cumpleaños")
             
-            print(f"📍 Tabla encontrada con selector: {table.tag_name}")
+            print(f"[FOUND] Tabla encontrada con selector: {table.tag_name}")
             
             # Extraer filas de la tabla
             rows = table.find_elements(By.CSS_SELECTOR, "tr, [role='row'], div[class*='row']")
@@ -206,7 +361,7 @@ class HermessBirthdayBot:
                 # Si no hay filas, buscar elementos que parezcan filas de datos
                 rows = table.find_elements(By.CSS_SELECTOR, "div[class*='item'], div[class*='entry'], div[class*='data']")
             
-            print(f"📍 Encontradas {len(rows)} filas potenciales")
+            print(f"[FOUND] Encontradas {len(rows)} filas potenciales")
             
             birthdays_data = []
             
@@ -224,17 +379,17 @@ class HermessBirthdayBot:
                             birthday_entry = self._parse_birthday_row(cell_texts)
                             if birthday_entry:
                                 birthdays_data.append(birthday_entry)
-                                print(f"  ✅ Fila {i+1}: {birthday_entry['nombre']} - {birthday_entry['cumpleanos']}")
+                                print(f"  [OK] Fila {i+1}: {birthday_entry['nombre']} - {birthday_entry['cumpleanos']}")
                         
                 except Exception as e:
-                    print(f"⚠️ Error procesando fila {i+1}: {str(e)}")
+                    print(f"[WARNING] Error procesando fila {i+1}: {str(e)}")
                     continue
             
-            print(f"✅ Se extrajeron {len(birthdays_data)} registros de cumpleaños")
+            print(f"[OK] Se extrajeron {len(birthdays_data)} registros de cumpleaños")
             return birthdays_data
             
         except Exception as e:
-            print(f"❌ Error extrayendo datos: {str(e)}")
+            print(f"[ERROR] Error extrayendo datos: {str(e)}")
             return []
     
     def _contains_birthday_data(self, element):
@@ -294,7 +449,7 @@ class HermessBirthdayBot:
             return None
             
         except Exception as e:
-            print(f"⚠️ Error parseando fila: {str(e)}")
+            print(f"[WARNING] Error parseando fila: {str(e)}")
             return None
     
     def _reorder_name(self, nombre):
@@ -383,7 +538,7 @@ class HermessBirthdayBot:
                 return f"{' '.join(nombres)} {' '.join(apellidos)}"
             
         except Exception as e:
-            print(f"⚠️ Error reordenando nombre '{nombre}': {str(e)}")
+            print(f"[WARNING] Error reordenando nombre '{nombre}': {str(e)}")
             return nombre
     
     def _format_name(self, nombre):
@@ -410,7 +565,7 @@ class HermessBirthdayBot:
             return " ".join(palabras_formateadas)
             
         except Exception as e:
-            print(f"⚠️ Error formateando nombre '{nombre}': {str(e)}")
+            print(f"[WARNING] Error formateando nombre '{nombre}': {str(e)}")
             return nombre
     
     def _convert_date_to_n8n_format(self, fecha_dd_mm):
@@ -437,7 +592,7 @@ class HermessBirthdayBot:
             return fecha_completa.strftime("%Y-%m-%d")
             
         except Exception as e:
-            print(f"⚠️ Error convirtiendo fecha {fecha_dd_mm}: {str(e)}")
+            print(f"[WARNING] Error convirtiendo fecha {fecha_dd_mm}: {str(e)}")
             return fecha_dd_mm
     
     def _remove_duplicates(self, data):
@@ -456,15 +611,15 @@ class HermessBirthdayBot:
                     unique_data.append(entry)
                 else:
                     duplicates_removed += 1
-                    print(f"🔄 Duplicado eliminado: {entry.get('nombre', 'Sin nombre')}")
+                    print(f"[INFO] Duplicado eliminado: {entry.get('nombre', 'Sin nombre')}")
             
             if duplicates_removed > 0:
-                print(f"✅ Se eliminaron {duplicates_removed} registros duplicados")
+                print(f"[OK] Se eliminaron {duplicates_removed} registros duplicados")
             
             return unique_data
             
         except Exception as e:
-            print(f"⚠️ Error eliminando duplicados: {str(e)}")
+            print(f"[WARNING] Error eliminando duplicados: {str(e)}")
             return data
     
     def send_to_n8n_webhook(self, data):
@@ -492,9 +647,9 @@ class HermessBirthdayBot:
                 'User-Agent': 'HermessApp-Birthday-Bot/1.0'
             }
             
-            print(f"🔄 Enviando datos al webhook de n8n...")
-            print(f"📊 Total de registros únicos: {len(data_unique)}")
-            print(f"🌐 URL del webhook: {self.n8n_webhook_url}")
+            print(f"[INFO] Enviando datos al webhook de n8n...")
+            print(f"[DATA] Total de registros únicos: {len(data_unique)}")
+            print(f"[WEB] URL del webhook: {self.n8n_webhook_url}")
             
             # Enviar petición POST al webhook
             response = requests.post(
@@ -506,33 +661,33 @@ class HermessBirthdayBot:
             
             # Verificar respuesta
             if response.status_code == 200:
-                print(f"✅ Datos enviados exitosamente al webhook de n8n")
-                print(f"📊 Total de registros enviados: {len(data_unique)}")
-                print(f"📅 Formato de fecha: YYYY-MM-DD")
-                print(f"📅 Año de ejecución: {datetime.now().year}")
+                print(f"[OK] Datos enviados exitosamente al webhook de n8n")
+                print(f"[DATA] Total de registros enviados: {len(data_unique)}")
+                print(f"[DATE] Formato de fecha: YYYY-MM-DD")
+                print(f"[DATE] Año de ejecución: {datetime.now().year}")
                 return True
             else:
-                print(f"❌ Error enviando datos al webhook. Código de respuesta: {response.status_code}")
-                print(f"📄 Respuesta del servidor: {response.text}")
+                print(f"[ERROR] Error enviando datos al webhook. Código de respuesta: {response.status_code}")
+                print(f"[PAGE] Respuesta del servidor: {response.text}")
                 return False
                 
         except requests.exceptions.Timeout:
-            print(f"❌ Timeout al enviar datos al webhook de n8n")
+            print(f"[ERROR] Timeout al enviar datos al webhook de n8n")
             return False
         except requests.exceptions.ConnectionError:
-            print(f"❌ Error de conexión al webhook de n8n")
+            print(f"[ERROR] Error de conexión al webhook de n8n")
             return False
         except requests.exceptions.RequestException as e:
-            print(f"❌ Error enviando datos al webhook: {str(e)}")
+            print(f"[ERROR] Error enviando datos al webhook: {str(e)}")
             return False
         except Exception as e:
-            print(f"❌ Error inesperado enviando datos: {str(e)}")
+            print(f"[ERROR] Error inesperado enviando datos: {str(e)}")
             return False
     
     def run(self):
         """Ejecuta el bot completo"""
         try:
-            print("🚀 Iniciando bot de HermessApp...")
+            print("[START] Iniciando bot de HermessApp...")
             
             self.setup_driver()
             
@@ -547,23 +702,23 @@ class HermessBirthdayBot:
             if birthdays_data:
                 success = self.send_to_n8n_webhook(birthdays_data)
                 if success:
-                    print(f"🎉 Datos enviados exitosamente al webhook de n8n")
+                    print(f"[SUCCESS] Datos enviados exitosamente al webhook de n8n")
                     return birthdays_data
                 else:
-                    print("❌ Error enviando datos al webhook")
+                    print("[ERROR] Error enviando datos al webhook")
                     return None
             else:
-                print("❌ No se pudieron extraer datos")
+                print("[ERROR] No se pudieron extraer datos")
                 return None
                 
         except Exception as e:
-            print(f"❌ Error general: {str(e)}")
+            print(f"[ERROR] Error general: {str(e)}")
             return None
             
         finally:
             if self.driver:
                 self.driver.quit()
-                print("🔒 Navegador cerrado")
+                print("[CLOSE] Navegador cerrado")
 
 def main():
     """Función principal"""
@@ -572,16 +727,16 @@ def main():
         result = bot.run()
         
         if result:
-            print(f"\n🎉 Bot ejecutado exitosamente!")
-            print(f"📊 Total de registros extraídos: {len(result)}")
-            print("\n📋 Primeros 3 registros:")
+            print(f"\n[SUCCESS] Bot ejecutado exitosamente!")
+            print(f"[DATA] Total de registros extraídos: {len(result)}")
+            print("\n[LIST] Primeros 3 registros:")
             for i, entry in enumerate(result[:3], 1):
                 print(f"  {i}. {entry['nombre']} - {entry['cumpleanos']} ({entry['edad']} años)")
         else:
-            print("\n❌ El bot no pudo completar la tarea")
+            print("\n[ERROR] El bot no pudo completar la tarea")
             
     except Exception as e:
-        print(f"❌ Error en la ejecución: {str(e)}")
+        print(f"[ERROR] Error en la ejecución: {str(e)}")
 
 if __name__ == "__main__":
     main()

@@ -3,25 +3,26 @@ version: '3.8'
 
 services:
   bot:
-    image: python:3.9-slim
+    image: python:3.9-alpine
     container_name: hermess-birthday-bot
     working_dir: /app
-    command: python3 hermess_birthday_bot.py
     
     # Esta sección es la magia de la persistencia:
     volumes:
       # Mapea la carpeta actual del servidor a la carpeta /app dentro del contenedor
       - .:/app
+      # Volumen temporal para datos de Chrome
+      - /tmp/selenium_chrome:/tmp/selenium_chrome
       
     # Carga las variables de entorno desde el archivo config.env
     env_file:
       - config.env
       
-    # Instala las dependencias al iniciar (si no están ya)
-    # y luego ejecuta el script.
+    # Instala las dependencias y Chrome para Alpine Linux
     entrypoint: >
-      bash -c "pip install --no-cache-dir -r requirements.txt &&
-               python3 hermess_birthday_bot.py"
+      sh -c "apk add --no-cache chromium chromium-chromedriver &&
+             pip install --no-cache-dir -r requirements.txt &&
+             python3 hermess_birthday_bot.py"
                
     # Mantiene el contenedor corriendo si necesitas depurar,
     # puedes comentarlo si solo quieres que se ejecute y termine.
@@ -29,3 +30,9 @@ services:
     
     # Se reinicia solo si falla (opcional)
     # restart: on-failure
+    
+    # Configuraciones adicionales para Alpine Linux
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CHROME_BIN=/usr/bin/chromium-browser
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver

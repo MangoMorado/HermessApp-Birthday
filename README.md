@@ -46,12 +46,13 @@ python hermess_birthday_bot.py
 ```
 
 ### El bot realizará automáticamente:
-1. ✅ Inicio de sesión en HermessApp
-2. ✅ Navegación a la página de cumpleaños
-3. ✅ Extracción de datos de la tabla
-4. ✅ Eliminación automática de duplicados
-5. ✅ Envío directo al webhook de n8n
-6. ✅ Formato optimizado para workflows de n8n
+1. ✅ Verificación de sesión existente (evita login innecesario)
+2. ✅ Inicio de sesión en HermessApp (solo si es necesario)
+3. ✅ Navegación a la página de cumpleaños
+4. ✅ Extracción de datos de la tabla
+5. ✅ Eliminación automática de duplicados
+6. ✅ Envío directo al webhook de n8n
+7. ✅ Formato optimizado para workflows de n8n
 
 ## 📊 Formato de Datos Enviados
 
@@ -158,6 +159,9 @@ Los datos se envían automáticamente sin necesidad de manejar archivos.
 - Los datos se extraen respetando la estructura de la tabla original
 - Los datos se envían directamente al webhook de n8n sin generar archivos locales
 - Incluye manejo robusto de errores de conexión y timeout
+- **Detección inteligente de sesión**: Verifica si ya hay una sesión iniciada antes de hacer login
+- **Compatible con Alpine Linux**: Configurado para funcionar en contenedores Docker
+- **Optimizado para producción**: Modo headless con configuración mínima de recursos
 
 ## 🤝 Soporte
 
