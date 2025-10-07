@@ -1,16 +1,16 @@
 # Bot de Scraping para HermessApp - Lista de Cumpleaños
 
-Este bot automatiza la extracción de la lista de cumpleaños de pacientes desde HermessApp usando Selenium y Python.
+Este bot automatiza la extracción de la lista de cumpleaños de pacientes desde HermessApp usando Selenium y Python, enviando los datos directamente a un webhook de n8n.
 
 ## 🚀 Características
 
 - **Login automático** en HermessApp
 - **Extracción de datos** de la tabla de cumpleaños
+- **Envío automático a webhook de n8n** para integración directa
 - **Formato n8n** compatible con workflows
-- **Nombres de archivo por mes** (ej: `septiembre.json`)
 - **Eliminación automática de duplicados**
 - **Fechas con año de ejecución** (siempre actualizado)
-- **Estructura simplificada** (solo campo `cumpleanos`)
+- **Estructura optimizada** para n8n
 - **Configuración por variables de entorno**
 
 ## 📋 Requisitos Previos
@@ -35,6 +35,7 @@ Este bot automatiza la extracción de la lista de cumpleaños de pacientes desde
    HERMESS_PASSWORD=tu_contraseña
    HERMESS_LOGIN_URL=https://hermessapp.com/login
    HERMESS_BIRTHDAYS_URL=https://hermessapp.com/pacientescumple
+   N8N_WEBHOOK_URL=https://tu-webhook-de-n8n.com/webhook/birthday-data
    ```
 
 ## 🚀 Uso
@@ -49,12 +50,12 @@ python hermess_birthday_bot.py
 2. ✅ Navegación a la página de cumpleaños
 3. ✅ Extracción de datos de la tabla
 4. ✅ Eliminación automática de duplicados
-5. ✅ Guardado en archivo JSON con nombre del mes (ej: `septiembre.json`)
-6. ✅ Formato n8n listo para usar en workflows
+5. ✅ Envío directo al webhook de n8n
+6. ✅ Formato optimizado para workflows de n8n
 
-## 📊 Formato de Salida
+## 📊 Formato de Datos Enviados
 
-Los datos se guardan en un archivo JSON con la siguiente estructura:
+Los datos se envían al webhook de n8n con la siguiente estructura:
 
 ```json
 {
@@ -77,14 +78,15 @@ Los datos se guardan en un archivo JSON con la siguiente estructura:
 }
 ```
 
-### 🔄 **Compatibilidad con n8n**
+### 🔄 **Integración Directa con n8n**
 
-El bot genera automáticamente fechas en formato **YYYY-MM-DD** (ISO 8601) que son 100% compatibles con n8n:
+El bot envía automáticamente los datos al webhook de n8n en formato **JSON** optimizado:
 
 - **`cumpleanos`**: Formato YYYY-MM-DD para n8n
 - **Año de ejecución**: Todas las fechas usan el año de ejecución del script
 - **Sin duplicados**: Eliminación automática de registros duplicados
 - **Metadatos**: Información útil para workflows de n8n
+- **Envío automático**: No necesitas manejar archivos, los datos llegan directamente a n8n
 
 ### ✨ **Formateo Automático de Nombres**
 
@@ -125,20 +127,24 @@ ANI-cumpleaños/
 └── README.md                        # Este archivo
 ```
 
-## 🎯 **Ejemplo de Uso en n8n**
+## 🎯 **Configuración del Webhook en n8n**
 
-Se incluye un archivo `n8n_workflow_example.json` que muestra cómo:
+Para recibir los datos del bot, configura un nodo **Webhook** en n8n:
 
-1. **Leer el archivo JSON** generado por el bot (ej: `septiembre.json`)
+1. **Crear un nodo Webhook** en tu workflow de n8n
+2. **Copiar la URL del webhook** generada por n8n
+3. **Agregar la URL** a tu archivo `config.env` como `N8N_WEBHOOK_URL`
+4. **Configurar el método** como POST en el nodo webhook
+5. **Los datos llegarán automáticamente** cada vez que ejecutes el bot
+
+### Ejemplo de workflow n8n:
+1. **Nodo Webhook** (recibe datos del bot)
 2. **Filtrar cumpleaños** del mes actual
 3. **Identificar cumpleaños próximos** (esta semana)
 4. **Generar notificaciones** automáticas
 5. **Crear reportes mensuales**
 
-Para usar este workflow:
-1. Importa el archivo en n8n
-2. Actualiza la ruta del archivo JSON al mes correspondiente
-3. Personaliza las notificaciones según tus necesidades
+Los datos se envían automáticamente sin necesidad de manejar archivos.
 
 ## 🔒 Seguridad
 
@@ -150,15 +156,18 @@ Para usar este workflow:
 
 - El bot incluye delays para evitar ser detectado como bot
 - Los datos se extraen respetando la estructura de la tabla original
-- Se generan archivos JSON con timestamp para evitar sobrescrituras
+- Los datos se envían directamente al webhook de n8n sin generar archivos locales
+- Incluye manejo robusto de errores de conexión y timeout
 
 ## 🤝 Soporte
 
 Si encuentras problemas:
 1. Verifica que las credenciales sean correctas
-2. Asegúrate de tener todas las dependencias instaladas
+2. Asegúrate de tener todas las dependencias instaladas (incluyendo `requests`)
 3. Revisa que Chrome esté actualizado
-4. Ejecuta en modo no-headless para ver qué está pasando
+4. Verifica que la URL del webhook de n8n sea correcta
+5. Ejecuta en modo no-headless para ver qué está pasando
+6. Revisa los logs de conexión al webhook
 
 ---
 

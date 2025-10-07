@@ -8,6 +8,7 @@ Extrae la información de cumpleaños de los pacientes y la guarda en formato n8
 import os
 import json
 import time
+import requests
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -26,9 +27,13 @@ class HermessBirthdayBot:
         self.password = os.getenv('HERMESS_PASSWORD')
         self.login_url = os.getenv('HERMESS_LOGIN_URL', 'https://hermessapp.com/login')
         self.birthdays_url = os.getenv('HERMESS_BIRTHDAYS_URL', 'https://hermessapp.com/pacientescumple')
+        self.n8n_webhook_url = os.getenv('N8N_WEBHOOK_URL') or os.getenv('n8n_workflow')
         
         if not self.email or not self.password:
             raise ValueError("Debes configurar HERMESS_EMAIL y HERMESS_PASSWORD en config.env")
+        
+        if not self.n8n_webhook_url:
+            raise ValueError("Debes configurar N8N_WEBHOOK_URL o n8n_workflow en config.env")
         
         self.driver = None
         self.wait = None
@@ -462,23 +467,14 @@ class HermessBirthdayBot:
             print(f"⚠️ Error eliminando duplicados: {str(e)}")
             return data
     
-    def save_to_json(self, data):
-        """Guarda los datos extraídos en un archivo JSON con nombre del mes"""
-        # Eliminar duplicados antes de guardar
+    def send_to_n8n_webhook(self, data):
+        """Envía los datos extraídos al webhook de n8n"""
+        # Eliminar duplicados antes de enviar
         data_unique = self._remove_duplicates(data)
-        
-        # Obtener nombre del mes en español
-        meses = {
-            1: "enero", 2: "febrero", 3: "marzo", 4: "abril",
-            5: "mayo", 6: "junio", 7: "julio", 8: "agosto",
-            9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
-        }
-        mes_actual = meses[datetime.now().month]
-        filename = f"{mes_actual}.json"
         
         try:
             # Crear estructura de datos con metadatos para n8n
-            output_data = {
+            payload = {
                 "metadata": {
                     "fecha_extraccion": datetime.now().isoformat(),
                     "total_registros": len(data_unique),
@@ -490,18 +486,48 @@ class HermessBirthdayBot:
                 "cumpleanos": data_unique
             }
             
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(output_data, f, ensure_ascii=False, indent=2)
+            # Configurar headers para la petición
+            headers = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'HermessApp-Birthday-Bot/1.0'
+            }
             
-            print(f"✅ Datos guardados en {filename}")
+            print(f"🔄 Enviando datos al webhook de n8n...")
             print(f"📊 Total de registros únicos: {len(data_unique)}")
-            print(f"📅 Formato de fecha: YYYY-MM-DD")
-            print(f"📅 Año de ejecución: {datetime.now().year}")
-            return filename
+            print(f"🌐 URL del webhook: {self.n8n_webhook_url}")
             
+            # Enviar petición POST al webhook
+            response = requests.post(
+                self.n8n_webhook_url,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            # Verificar respuesta
+            if response.status_code == 200:
+                print(f"✅ Datos enviados exitosamente al webhook de n8n")
+                print(f"📊 Total de registros enviados: {len(data_unique)}")
+                print(f"📅 Formato de fecha: YYYY-MM-DD")
+                print(f"📅 Año de ejecución: {datetime.now().year}")
+                return True
+            else:
+                print(f"❌ Error enviando datos al webhook. Código de respuesta: {response.status_code}")
+                print(f"📄 Respuesta del servidor: {response.text}")
+                return False
+                
+        except requests.exceptions.Timeout:
+            print(f"❌ Timeout al enviar datos al webhook de n8n")
+            return False
+        except requests.exceptions.ConnectionError:
+            print(f"❌ Error de conexión al webhook de n8n")
+            return False
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error enviando datos al webhook: {str(e)}")
+            return False
         except Exception as e:
-            print(f"❌ Error guardando archivo: {str(e)}")
-            return None
+            print(f"❌ Error inesperado enviando datos: {str(e)}")
+            return False
     
     def run(self):
         """Ejecuta el bot completo"""
@@ -519,9 +545,13 @@ class HermessBirthdayBot:
             birthdays_data = self.extract_birthday_data()
             
             if birthdays_data:
-                filename = self.save_to_json(birthdays_data)
-                print(f"📁 Archivo generado: {filename}")
-                return birthdays_data
+                success = self.send_to_n8n_webhook(birthdays_data)
+                if success:
+                    print(f"🎉 Datos enviados exitosamente al webhook de n8n")
+                    return birthdays_data
+                else:
+                    print("❌ Error enviando datos al webhook")
+                    return None
             else:
                 print("❌ No se pudieron extraer datos")
                 return None
