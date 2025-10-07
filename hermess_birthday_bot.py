@@ -641,15 +641,25 @@ class HermessBirthdayBot:
                 "cumpleanos": data_unique
             }
             
-            # Configurar headers para la petición
+            # Configurar headers para la petición con User-Agent específico del SO
+            import platform
+            system = platform.system()
+            if system == "Linux":
+                user_agent = 'HermessApp-Birthday-Bot/Alpine'
+            elif system == "Windows":
+                user_agent = 'HermessApp-Birthday-Bot/Windows'
+            else:
+                user_agent = f'HermessApp-Birthday-Bot/{system}'
+            
             headers = {
                 'Content-Type': 'application/json',
-                'User-Agent': 'HermessApp-Birthday-Bot/1.0'
+                'User-Agent': user_agent
             }
             
             print(f"[INFO] Enviando datos al webhook de n8n...")
             print(f"[DATA] Total de registros únicos: {len(data_unique)}")
             print(f"[WEB] URL del webhook: {self.n8n_webhook_url}")
+            print(f"[WEB] User-Agent: {user_agent}")
             
             # Enviar petición POST al webhook
             response = requests.post(

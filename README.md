@@ -162,6 +162,7 @@ Los datos se envían automáticamente sin necesidad de manejar archivos.
 - **Detección inteligente de sesión**: Verifica si ya hay una sesión iniciada antes de hacer login
 - **Compatible con Alpine Linux**: Configurado para funcionar en contenedores Docker
 - **Optimizado para producción**: Modo headless con configuración mínima de recursos
+- **User-Agent específico por SO**: Envía `HermessApp-Birthday-Bot/Windows` o `HermessApp-Birthday-Bot/Alpine` según el entorno
 
 ## 🤝 Soporte
 
